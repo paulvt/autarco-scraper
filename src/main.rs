@@ -1,5 +1,8 @@
 use color_eyre::Result;
 use lazy_static::lazy_static;
+use rocket::{get, launch, routes, Rocket};
+use rocket_contrib::json::Json;
+use serde::Serialize;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -40,7 +43,7 @@ impl Drop for GeckoDriver {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 struct Status {
     current_w: u32,
     total_kwh: u32,
@@ -72,7 +75,7 @@ lazy_static! {
     static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
 }
 
-fn main() -> Result<()> {
+fn update_loop() -> Result<()> {
     color_eyre::install()?;
 
     let _gecko_driver = GeckoDriver::spawn()?;
@@ -118,4 +121,15 @@ fn main() -> Result<()> {
         // Wait the poll interval to check again!
         thread::sleep(Duration::from_secs(POLL_INTERVAL));
     }
+}
+
+#[get("/", format = "application/json")]
+fn status() -> Option<Json<Status>> {
+    let status_guard = STATUS.lock().expect("Status mutex was poisoned");
+    status_guard.map(|status| Json(status))
+}
+
+#[launch]
+fn rocket() -> Rocket {
+    rocket::ignite().mount("/", routes![status])
 }
