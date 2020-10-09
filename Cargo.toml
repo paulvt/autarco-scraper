@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Paul van Tilburg <paul@luon.net>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-webdriver_client = "0.2.4"
+color-eyre = "0.5.6"
+thirtyfour_sync = "0.19.0"
