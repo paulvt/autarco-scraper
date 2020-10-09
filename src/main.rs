@@ -37,6 +37,34 @@ impl Drop for GeckoDriver {
     }
 }
 
+#[derive(Debug)]
+struct Status {
+    current_w: u32,
+    total_kwh: u32,
+    last_updated: u64,
+}
+
+fn login(driver: &WebDriver) -> Result<()> {
+    driver.get(URL)?;
+
+    let input = driver.find_element(By::Id("username"))?;
+    input.send_keys(USERNAME)?;
+    let input = driver.find_element(By::Id("password"))?;
+    input.send_keys(PASSWORD)?;
+    let input = driver.find_element(By::Css("button[type=submit]"))?;
+    input.click()?;
+
+    Ok(())
+}
+
+fn element_value(driver: &WebDriver, by: By) -> Result<u32> {
+    let element = driver.find_element(by)?;
+    let text = element.text()?;
+    let value = text.parse()?;
+
+    Ok(value)
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -45,36 +73,28 @@ fn main() -> Result<()> {
     caps.set_headless()?;
     let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps)?;
 
-    // Got to the My Autarco site
-    driver.get(URL)?;
-
-    // Log in
-    let input = driver.find_element(By::Id("username"))?;
-    input.send_keys(USERNAME)?;
-    let input = driver.find_element(By::Id("password"))?;
-    input.send_keys(PASSWORD)?;
-    let input = driver.find_element(By::Css("button[type=submit]"))?;
-    input.click()?;
+    // Go to the My Autarco site and login
+    login(&driver)?;
 
     loop {
-        thread::sleep(Duration::from_secs(60));
-
-        // let screenshot = session.screenshot()?;
-        // screenshot.save_file("screenshot.png")?;
+        // // Take a screenshot!
+        // driver.screenshot(&std::path::PathBuf::from("screenshot.png"))?;
 
         // Retrieve the data from the elements
-        let time = SystemTime::now()
+        let last_updated = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        println!("time: {}", time);
+        let current_w = element_value(&driver, By::Css("h2#pv-now b"))?;
+        let total_kwh = element_value(&driver, By::Css("h2#pv-to-date b"))?;
 
-        let current = driver.find_element(By::Css("h2#pv-now b"))?;
-        println!("current: {} W", current.text()?);
+        let status = Status {
+            current_w,
+            total_kwh,
+            last_updated,
+        };
+        dbg!(&status);
 
-        let total = driver.find_element(By::Css("h2#pv-to-date b"))?;
-        println!("total: {} kWh", total.text()?);
-
-        println!();
+        thread::sleep(Duration::from_secs(60));
     }
 }
