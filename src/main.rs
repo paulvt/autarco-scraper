@@ -85,10 +85,6 @@ fn main() -> Result<()> {
 
     loop {
         // Retrieve the data from the elements
-        let last_updated = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
         let current_w = match element_value(&driver, By::Css("h2#pv-now b")) {
             Ok(value) => value,
             Err(error) => {
@@ -103,6 +99,10 @@ fn main() -> Result<()> {
                 continue;
             }
         };
+        let last_updated = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         // Update the status
         let mut status_guard = STATUS.lock().expect("Status mutex was poisoned");
