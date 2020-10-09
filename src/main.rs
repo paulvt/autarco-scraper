@@ -1,16 +1,19 @@
 use color_eyre::Result;
 use lazy_static::lazy_static;
-use rocket::{get, launch, routes, tokio, Rocket};
+use rocket::{get, routes, Rocket};
 use rocket_contrib::json::Json;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::Stdio;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
 use thirtyfour::prelude::*;
 use tokio::fs::File;
 use tokio::prelude::*;
+use tokio::process::{Child, Command};
+use tokio::sync::oneshot::Receiver;
+use tokio::time::delay_for;
 
 /// The port used by the Gecko Driver
 const GECKO_DRIVER_PORT: u16 = 18019;
@@ -43,16 +46,12 @@ impl GeckoDriver {
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .stdout(Stdio::null())
+            .kill_on_drop(true)
             .spawn()?;
+
         thread::sleep(Duration::new(1, 500));
 
         Ok(GeckoDriver(child))
-    }
-}
-
-impl Drop for GeckoDriver {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
     }
 }
 
@@ -101,10 +100,9 @@ lazy_static! {
     static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
 }
 
-async fn update_loop() -> Result<()> {
+async fn update_loop(mut rx: Receiver<()>) -> Result<()> {
     color_eyre::install()?;
 
-    let _gecko_driver = GeckoDriver::spawn(GECKO_DRIVER_PORT)?;
     let mut caps = DesiredCapabilities::firefox();
     caps.set_headless()?;
     let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps).await?;
@@ -112,7 +110,24 @@ async fn update_loop() -> Result<()> {
     // Go to the My Autarco site and login
     login(&driver).await?;
 
+    let mut last_updated = 0;
     loop {
+        // Wait the poll interval to check again!
+        delay_for(Duration::from_secs(1)).await;
+
+        // Shut down if there is a signal
+        if let Ok(()) = rx.try_recv() {
+            break;
+        }
+
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        if timestamp - last_updated < POLL_INTERVAL {
+            continue;
+        }
+
         // Retrieve the data from the elements
         let current_w = match element_value(&driver, By::Css("h2#pv-now b")).await {
             Ok(value) => value,
@@ -128,10 +143,7 @@ async fn update_loop() -> Result<()> {
                 continue;
             }
         };
-        let last_updated = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        last_updated = timestamp;
 
         // Update the status
         let mut status_guard = STATUS.lock().expect("Status mutex was poisoned");
@@ -142,22 +154,34 @@ async fn update_loop() -> Result<()> {
         };
         println!("Updated status to: {:#?}", status);
         status_guard.replace(status);
-        drop(status_guard);
-
-        // Wait the poll interval to check again!
-        thread::sleep(Duration::from_secs(POLL_INTERVAL));
     }
+
+    Ok(())
 }
 
 #[get("/", format = "application/json")]
 async fn status() -> Option<Json<Status>> {
-    let status_guard = STATUS.lock().expect("Status mutex was poisoned");
+    let status_guard = STATUS.lock().expect("Status mutex was poisoined");
     status_guard.map(|status| Json(status))
 }
 
-#[launch]
 fn rocket() -> Rocket {
-    tokio::spawn(update_loop());
-
     rocket::ignite().mount("/", routes![status])
+}
+
+#[rocket::main]
+async fn main() {
+    let gecko_driver =
+        GeckoDriver::spawn(GECKO_DRIVER_PORT).expect("Could not find/start the Gecko Driver");
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let updater = tokio::spawn(update_loop(rx));
+
+    let result = rocket().launch().await;
+    result.expect("Server failed unexpectedly");
+
+    tx.send(())
+        .expect("Could not send update loop shutdown signal");
+    let _result = updater.await;
+
+    drop(gecko_driver);
 }
