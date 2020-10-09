@@ -85,8 +85,20 @@ fn main() -> Result<()> {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let current_w = element_value(&driver, By::Css("h2#pv-now b"))?;
-        let total_kwh = element_value(&driver, By::Css("h2#pv-to-date b"))?;
+        let current_w = match element_value(&driver, By::Css("h2#pv-now b")) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("Failed to retrieve current power: {}", error);
+                continue;
+            }
+        };
+        let total_kwh = match element_value(&driver, By::Css("h2#pv-to-date b")) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("Failed to retrieve total energy production: {}", error);
+                continue;
+            }
+        };
 
         let status = Status {
             current_w,
