@@ -3,6 +3,7 @@ use lazy_static::lazy_static;
 use rocket::{get, launch, routes, Rocket};
 use rocket_contrib::json::Json;
 use serde::Serialize;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -15,18 +16,16 @@ const POLL_INTERVAL: u64 = 300;
 
 const GECKO_DRIVER_PORT: u16 = 18019;
 
-use std::process::{Child, Command, Stdio};
-
 struct GeckoDriver(Child);
 
 impl GeckoDriver {
-    pub fn spawn() -> Result<Self> {
+    pub fn spawn(port: u16) -> Result<Self> {
         // This is taken from the webdriver-client crate.
         let child = Command::new("geckodriver")
             .arg("-b")
             .arg("firefox")
             .arg("--port")
-            .arg(format!("{}", GECKO_DRIVER_PORT))
+            .arg(format!("{}", port))
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .stdout(Stdio::null())
@@ -78,7 +77,7 @@ lazy_static! {
 async fn update_loop() -> Result<()> {
     color_eyre::install()?;
 
-    let _gecko_driver = GeckoDriver::spawn()?;
+    let _gecko_driver = GeckoDriver::spawn(GECKO_DRIVER_PORT)?;
     let mut caps = DesiredCapabilities::firefox();
     caps.set_headless()?;
     let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps).await?;
