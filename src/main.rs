@@ -113,7 +113,7 @@ async fn update_loop() -> Result<()> {
             total_kwh,
             last_updated,
         };
-        dbg!(&status);
+        println!("Updated status to: {:#?}", status);
         status_guard.replace(status);
         drop(status_guard);
 
