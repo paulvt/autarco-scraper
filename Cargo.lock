@@ -40,6 +40,7 @@ name = "autarco-scraper"
 version = "0.1.0"
 dependencies = [
  "color-eyre",
+ "lazy_static",
  "thirtyfour_sync",
 ]
 

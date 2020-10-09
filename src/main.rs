@@ -1,11 +1,14 @@
 use color_eyre::Result;
+use lazy_static::lazy_static;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
 use thirtyfour_sync::prelude::*;
 
+const URL: &'static str = "https://my.autarco.com/";
 const USERNAME: &'static str = "pja@vtilburg.net";
 const PASSWORD: &'static str = "XXXXXXXXXXXXXXXX";
-const URL: &'static str = "https://my.autarco.com/";
+const POLL_INTERVAL: u64 = 300;
 
 const GECKO_DRIVER_PORT: u16 = 18019;
 
@@ -65,6 +68,10 @@ fn element_value(driver: &WebDriver, by: By) -> Result<u32> {
     Ok(value)
 }
 
+lazy_static! {
+    static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -77,9 +84,6 @@ fn main() -> Result<()> {
     login(&driver)?;
 
     loop {
-        // // Take a screenshot!
-        // driver.screenshot(&std::path::PathBuf::from("screenshot.png"))?;
-
         // Retrieve the data from the elements
         let last_updated = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -100,13 +104,18 @@ fn main() -> Result<()> {
             }
         };
 
+        // Update the status
+        let mut status_guard = STATUS.lock().expect("Status mutex was poisoned");
         let status = Status {
             current_w,
             total_kwh,
             last_updated,
         };
         dbg!(&status);
+        status_guard.replace(status);
+        drop(status_guard);
 
-        thread::sleep(Duration::from_secs(60));
+        // Wait the poll interval to check again!
+        thread::sleep(Duration::from_secs(POLL_INTERVAL));
     }
 }
