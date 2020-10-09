@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
-use thirtyfour_sync::prelude::*;
+use thirtyfour::prelude::*;
 
 const URL: &'static str = "https://my.autarco.com/";
 const USERNAME: &'static str = "pja@vtilburg.net";
@@ -50,22 +50,22 @@ struct Status {
     last_updated: u64,
 }
 
-fn login(driver: &WebDriver) -> Result<()> {
-    driver.get(URL)?;
+async fn login(driver: &WebDriver) -> Result<()> {
+    driver.get(URL).await?;
 
-    let input = driver.find_element(By::Id("username"))?;
-    input.send_keys(USERNAME)?;
-    let input = driver.find_element(By::Id("password"))?;
-    input.send_keys(PASSWORD)?;
-    let input = driver.find_element(By::Css("button[type=submit]"))?;
-    input.click()?;
+    let input = driver.find_element(By::Id("username")).await?;
+    input.send_keys(USERNAME).await?;
+    let input = driver.find_element(By::Id("password")).await?;
+    input.send_keys(PASSWORD).await?;
+    let input = driver.find_element(By::Css("button[type=submit]")).await?;
+    input.click().await?;
 
     Ok(())
 }
 
-fn element_value(driver: &WebDriver, by: By) -> Result<u32> {
-    let element = driver.find_element(by)?;
-    let text = element.text()?;
+async fn element_value(driver: &WebDriver, by: By<'_>) -> Result<u32> {
+    let element = driver.find_element(by).await?;
+    let text = element.text().await?;
     let value = text.parse()?;
 
     Ok(value)
@@ -75,27 +75,27 @@ lazy_static! {
     static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
 }
 
-fn update_loop() -> Result<()> {
+async fn update_loop() -> Result<()> {
     color_eyre::install()?;
 
     let _gecko_driver = GeckoDriver::spawn()?;
     let mut caps = DesiredCapabilities::firefox();
     caps.set_headless()?;
-    let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps)?;
+    let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps).await?;
 
     // Go to the My Autarco site and login
-    login(&driver)?;
+    login(&driver).await?;
 
     loop {
         // Retrieve the data from the elements
-        let current_w = match element_value(&driver, By::Css("h2#pv-now b")) {
+        let current_w = match element_value(&driver, By::Css("h2#pv-now b")).await {
             Ok(value) => value,
             Err(error) => {
                 eprintln!("Failed to retrieve current power: {}", error);
                 continue;
             }
         };
-        let total_kwh = match element_value(&driver, By::Css("h2#pv-to-date b")) {
+        let total_kwh = match element_value(&driver, By::Css("h2#pv-to-date b")).await {
             Ok(value) => value,
             Err(error) => {
                 eprintln!("Failed to retrieve total energy production: {}", error);
@@ -131,5 +131,7 @@ fn status() -> Option<Json<Status>> {
 
 #[launch]
 fn rocket() -> Rocket {
+    rocket::tokio::spawn(async { update_loop().await });
+
     rocket::ignite().mount("/", routes![status])
 }

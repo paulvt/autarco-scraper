@@ -70,7 +70,7 @@ dependencies = [
  "rocket",
  "rocket_contrib",
  "serde",
- "thirtyfour_sync",
+ "thirtyfour",
 ]
 
 [[package]]
@@ -1417,20 +1417,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "urlparse",
-]
-
-[[package]]
-name = "thirtyfour_sync"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1c65ffcbca73b4a78a376c1252349438c38c07c99c01b2a9f21905b49216108"
-dependencies = [
- "base64",
- "log",
- "reqwest",
- "serde",
- "serde_json",
- "thirtyfour",
 ]
 
 [[package]]
