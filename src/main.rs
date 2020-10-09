@@ -1,21 +1,35 @@
 use color_eyre::Result;
 use lazy_static::lazy_static;
-use rocket::{get, launch, routes, Rocket};
+use rocket::{get, launch, routes, tokio, Rocket};
 use rocket_contrib::json::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
 use thirtyfour::prelude::*;
+use tokio::fs::File;
+use tokio::prelude::*;
 
-const URL: &'static str = "https://my.autarco.com/";
-const USERNAME: &'static str = "pja@vtilburg.net";
-const PASSWORD: &'static str = "XXXXXXXXXXXXXXXX";
-const POLL_INTERVAL: u64 = 300;
-
+/// The port used by the Gecko Driver
 const GECKO_DRIVER_PORT: u16 = 18019;
 
+/// The interval between data polls
+///
+/// This depends on with which interval Autaurco processes new information from the convertor.
+const POLL_INTERVAL: u64 = 300;
+
+/// The URL to the My Autarco site
+const URL: &'static str = "https://my.autarco.com/";
+
+#[derive(Debug, Deserialize)]
+struct Config {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug)]
 struct GeckoDriver(Child);
 
 impl GeckoDriver {
@@ -49,13 +63,26 @@ struct Status {
     last_updated: u64,
 }
 
+async fn load_config() -> Result<Config> {
+    let config_file_name = Path::new(env!("CARGO_MANIFEST_DIR")).join("autarco.toml");
+    let mut file = File::open(config_file_name).await?;
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).await?;
+    let config = toml::from_str(&contents)?;
+
+    Ok(config)
+}
+
 async fn login(driver: &WebDriver) -> Result<()> {
+    let config = load_config().await?;
+
     driver.get(URL).await?;
 
     let input = driver.find_element(By::Id("username")).await?;
-    input.send_keys(USERNAME).await?;
+    input.send_keys(&config.username).await?;
     let input = driver.find_element(By::Id("password")).await?;
-    input.send_keys(PASSWORD).await?;
+    input.send_keys(&config.password).await?;
     let input = driver.find_element(By::Css("button[type=submit]")).await?;
     input.click().await?;
 
@@ -123,14 +150,14 @@ async fn update_loop() -> Result<()> {
 }
 
 #[get("/", format = "application/json")]
-fn status() -> Option<Json<Status>> {
+async fn status() -> Option<Json<Status>> {
     let status_guard = STATUS.lock().expect("Status mutex was poisoned");
     status_guard.map(|status| Json(status))
 }
 
 #[launch]
 fn rocket() -> Rocket {
-    rocket::tokio::spawn(async { update_loop().await });
+    tokio::spawn(update_loop());
 
     rocket::ignite().mount("/", routes![status])
 }

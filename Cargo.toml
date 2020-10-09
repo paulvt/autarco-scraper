@@ -8,6 +8,7 @@ edition = "2018"
 color-eyre = "0.5.6"
 lazy_static = "1.4.0"
 serde = "1.0.116"
+toml = "0.5.6"
 
 [dependencies.rocket]
 git = "https://github.com/SergioBenitez/Rocket"

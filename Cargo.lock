@@ -71,6 +71,7 @@ dependencies = [
  "rocket_contrib",
  "serde",
  "thirtyfour",
+ "toml",
 ]
 
 [[package]]
