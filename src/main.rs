@@ -107,7 +107,7 @@ async fn update_loop(mut rx: Receiver<()>) -> Result<()> {
     let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps).await?;
 
     // Go to the My Autarco site and login
-    login(&driver).await?;
+    login(&driver).await.expect("Failed to log in");
 
     let mut last_updated = 0;
     loop {
