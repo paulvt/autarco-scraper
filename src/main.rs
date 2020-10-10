@@ -16,7 +16,7 @@ use tokio::sync::oneshot::Receiver;
 use tokio::time::delay_for;
 
 /// The port used by the Gecko Driver
-const GECKO_DRIVER_PORT: u16 = 18019;
+const GECKO_DRIVER_PORT: u16 = 4444;
 
 /// The interval between data polls
 ///
@@ -39,8 +39,7 @@ impl GeckoDriver {
     pub fn spawn(port: u16) -> Result<Self> {
         // This is taken from the webdriver-client crate.
         let child = Command::new("geckodriver")
-            .arg("-b")
-            .arg("firefox")
+            // .arg("-v")
             .arg("--port")
             .arg(format!("{}", port))
             .stdin(Stdio::null())
