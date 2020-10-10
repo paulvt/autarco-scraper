@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  server:
+    image: autarco-scraper:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - 8066:8000
+    volumes:
+      - ./autarco.toml:/autarco-scraper/autarco.toml
+    environment:
+      ROCKET_LOG: normal  # Available levels are: off, debug, normal, critical
+    shm_size: '2gb'

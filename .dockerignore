@@ -1,0 +1,18 @@
+# Local build and dev artifacts
+target
+
+# Docker files
+Dockerfile*
+docker-compose*
+
+# Git folder
+.git
+
+# Dot files
+.gitignore
+
+# TOML files
+autarco.toml*
+
+# Documentation
+*.md
