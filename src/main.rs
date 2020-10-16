@@ -32,26 +32,20 @@ struct Config {
     password: String,
 }
 
-#[derive(Debug)]
-struct GeckoDriver(Child);
+fn spawn_driver(port: u16) -> Result<Child> {
+    // This is taken from the webdriver-client crate.
+    let child = Command::new("geckodriver")
+        .arg("--port")
+        .arg(format!("{}", port))
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()?;
 
-impl GeckoDriver {
-    pub fn spawn(port: u16) -> Result<Self> {
-        // This is taken from the webdriver-client crate.
-        let child = Command::new("geckodriver")
-            // .arg("-v")
-            .arg("--port")
-            .arg(format!("{}", port))
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .stdout(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()?;
+    thread::sleep(Duration::new(1, 500));
 
-        thread::sleep(Duration::new(1, 500));
-
-        Ok(GeckoDriver(child))
-    }
+    Ok(child)
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -171,8 +165,9 @@ fn rocket() -> Rocket {
 
 #[rocket::main]
 async fn main() {
-    let gecko_driver =
-        GeckoDriver::spawn(GECKO_DRIVER_PORT).expect("Could not find/start the Gecko Driver");
+    let driver_proc =
+        spawn_driver(GECKO_DRIVER_PORT).expect("Could not find/start the Gecko Driver");
+
     let (tx, rx) = tokio::sync::oneshot::channel();
     let updater = tokio::spawn(update_loop(rx));
 
@@ -183,5 +178,5 @@ async fn main() {
         .expect("Could not send update loop shutdown signal");
     let _result = updater.await;
 
-    drop(gecko_driver);
+    drop(driver_proc);
 }
