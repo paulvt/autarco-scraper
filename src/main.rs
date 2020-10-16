@@ -94,8 +94,6 @@ lazy_static! {
 }
 
 async fn update_loop(mut rx: Receiver<()>) -> Result<()> {
-    color_eyre::install()?;
-
     let mut caps = DesiredCapabilities::firefox();
     caps.set_headless()?;
     let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps).await?;
@@ -169,6 +167,8 @@ fn rocket() -> Rocket {
 
 #[rocket::main]
 async fn main() {
+    color_eyre::install()?;
+
     let driver_proc =
         spawn_driver(GECKO_DRIVER_PORT).expect("Could not find/start the Gecko Driver");
 
