@@ -1,4 +1,4 @@
-use color_eyre::Result;
+use color_eyre::{eyre::eyre, Result};
 use lazy_static::lazy_static;
 use rocket::{get, routes, Rocket};
 use rocket_contrib::json::Json;
@@ -166,7 +166,7 @@ fn rocket() -> Rocket {
 }
 
 #[rocket::main]
-async fn main() {
+async fn main() -> Result<()> {
     color_eyre::install()?;
 
     let driver_proc =
@@ -175,12 +175,24 @@ async fn main() {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let updater = tokio::spawn(update_loop(rx));
 
-    let result = rocket().launch().await;
-    result.expect("Server failed unexpectedly");
+    let mut rocket = rocket();
+    let shutdown_handle = rocket.inspect().await.shutdown();
 
-    tx.send(())
-        .expect("Could not send update loop shutdown signal");
-    let _result = updater.await;
+    tokio::select! {
+        result = driver_proc => {
+            shutdown_handle.shutdown();
+            tx.send(()).map_err(|_| eyre!("Could not send shutdown signal"))?;
+            result?;
+        },
+        result = rocket.launch() => {
+            tx.send(()).map_err(|_| eyre!("Could not send shutdown signal"))?;
+            result?;
+        },
+        result = updater => {
+            shutdown_handle.shutdown();
+            result??;
+        }
+    }
 
-    drop(driver_proc);
+    Ok(())
 }
