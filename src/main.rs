@@ -102,7 +102,11 @@ async fn update_loop(mut rx: Receiver<()>) -> Result<()> {
 
     // Go to the My Autarco site and login
     println!("⚡ Logging in...");
-    login(&driver).await.expect("Failed to log in");
+    // FIXME: Just dropping the driver hangs the process?
+    if let Err(e) = login(&driver).await {
+        driver.quit().await?;
+        return Err(e);
+    }
 
     let mut last_updated = 0;
     loop {
