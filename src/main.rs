@@ -1,19 +1,22 @@
-use color_eyre::{eyre::eyre, Result};
-use lazy_static::lazy_static;
-use rocket::{get, routes, Rocket};
-use rocket_contrib::json::Json;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
+
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
+use lazy_static::lazy_static;
+use rocket::serde::json::Json;
+use rocket::tokio::fs::File;
+use rocket::tokio::io::AsyncReadExt;
+use rocket::tokio::select;
+use rocket::tokio::sync::oneshot::Receiver;
+use rocket::tokio::time::sleep;
+use rocket::{get, routes};
+use serde::{Deserialize, Serialize};
 use thirtyfour::prelude::*;
-use tokio::fs::File;
-use tokio::prelude::*;
 use tokio::process::{Child, Command};
-use tokio::sync::oneshot::Receiver;
-use tokio::time::delay_for;
 
 /// The port used by the Gecko Driver
 const GECKO_DRIVER_PORT: u16 = 4444;
@@ -26,12 +29,17 @@ const POLL_INTERVAL: u64 = 300;
 /// The URL to the My Autarco site
 const URL: &'static str = "https://my.autarco.com/";
 
+/// The login configuration
 #[derive(Debug, Deserialize)]
 struct Config {
     username: String,
     password: String,
 }
 
+/// Spawns the gecko driver
+///
+/// Note that the function blocks and delays at least a second to ensure everything is up and
+/// running.
 fn spawn_driver(port: u16) -> Result<Child> {
     // This is taken from the webdriver-client crate.
     let child = Command::new("geckodriver")
@@ -109,7 +117,7 @@ async fn update_loop(mut rx: Receiver<()>) -> Result<()> {
     let mut last_updated = 0;
     loop {
         // Wait the poll interval to check again!
-        delay_for(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(1)).await;
 
         // Shut down if there is a signal
         if let Ok(()) = rx.try_recv() {
@@ -161,26 +169,22 @@ async fn status() -> Option<Json<Status>> {
     status_guard.map(|status| Json(status))
 }
 
-fn rocket() -> Rocket {
-    rocket::ignite().mount("/", routes![status])
-}
-
 #[rocket::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let driver_proc =
+    let mut driver_proc =
         spawn_driver(GECKO_DRIVER_PORT).expect("Could not find/start the Gecko Driver");
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let updater = tokio::spawn(update_loop(rx));
+    let (tx, rx) = rocket::tokio::sync::oneshot::channel();
+    let updater = rocket::tokio::spawn(update_loop(rx));
 
-    let mut rocket = rocket();
-    let shutdown_handle = rocket.inspect().await.shutdown();
+    let rocket = rocket::build().mount("/", routes![status]).ignite().await?;
+    let shutdown = rocket.shutdown();
 
-    tokio::select! {
-        result = driver_proc => {
-            shutdown_handle.shutdown();
+    select! {
+        result = driver_proc.wait() => {
+            shutdown.notify();
             tx.send(()).map_err(|_| eyre!("Could not send shutdown signal"))?;
             result?;
         },
@@ -189,7 +193,7 @@ async fn main() -> Result<()> {
             result?;
         },
         result = updater => {
-            shutdown_handle.shutdown();
+            shutdown.notify();
             result??;
         }
     }
