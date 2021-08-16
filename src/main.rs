@@ -1,66 +1,46 @@
 use std::path::Path;
-use std::process::Stdio;
 use std::sync::Mutex;
-use std::thread;
 use std::time::{Duration, SystemTime};
 
-use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use lazy_static::lazy_static;
 use rocket::serde::json::Json;
 use rocket::tokio::fs::File;
 use rocket::tokio::io::AsyncReadExt;
 use rocket::tokio::select;
-use rocket::tokio::sync::oneshot::Receiver;
 use rocket::tokio::time::sleep;
 use rocket::{get, routes};
 use serde::{Deserialize, Serialize};
-use thirtyfour::prelude::*;
-use tokio::process::{Child, Command};
-
-/// The port used by the Gecko Driver
-const GECKO_DRIVER_PORT: u16 = 4444;
+use url::{ParseError, Url};
 
 /// The interval between data polls
 ///
-/// This depends on with which interval Autaurco processes new information from the convertor.
+/// This depends on with which interval Autaurco processes new information from the invertor.
 const POLL_INTERVAL: u64 = 300;
 
-/// The URL to the My Autarco site
-const URL: &'static str = "https://my.autarco.com/";
+/// The base URL of My Autarco site
+const BASE_URL: &'static str = "https://my.autarco.com";
 
-/// The login configuration
+fn login_url() -> Result<Url, ParseError> {
+    Url::parse(&format!("{}/auth/login", BASE_URL))
+}
+
+fn api_url(site_id: &str, endpoint: &str) -> Result<Url, ParseError> {
+    Url::parse(&format!(
+        "{}/api/site/{}/kpis/{}",
+        BASE_URL, site_id, endpoint
+    ))
+}
+
+/// The configuration for the My Autarco site
 #[derive(Debug, Deserialize)]
 struct Config {
+    /// The username of the account to login with
     username: String,
+    /// The password of the account to login with
     password: String,
-}
-
-/// Spawns the gecko driver
-///
-/// Note that the function blocks and delays at least a second to ensure everything is up and
-/// running.
-fn spawn_driver(port: u16) -> Result<Child> {
-    // This is taken from the webdriver-client crate.
-    let child = Command::new("geckodriver")
-        .arg("--port")
-        .arg(format!("{}", port))
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()?;
-
-    thread::sleep(Duration::new(1, 500));
-
-    Ok(child)
-}
-
-#[derive(Clone, Copy, Debug, Serialize)]
-struct Status {
-    current_w: u32,
-    total_kwh: u32,
-    last_updated: u64,
+    /// The Autarco site ID to track
+    site_id: String,
 }
 
 async fn load_config() -> Result<Config> {
@@ -74,55 +54,81 @@ async fn load_config() -> Result<Config> {
     Ok(config)
 }
 
-async fn login(driver: &WebDriver) -> Result<()> {
-    let config = load_config().await?;
+/// The current photovoltaic invertor status.
+#[derive(Clone, Copy, Debug, Serialize)]
+struct Status {
+    /// Current power production (W)
+    current_w: u32,
+    /// Total energy produced since installation (kWh)
+    total_kwh: u32,
+    /// Timestamp of last update
+    last_updated: u64,
+}
 
-    driver.get(URL).await?;
+lazy_static! {
+    /// The concurrently accessible current status
+    static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
+}
 
-    let input = driver.find_element(By::Id("username")).await?;
-    input.send_keys(&config.username).await?;
-    let input = driver.find_element(By::Id("password")).await?;
-    input.send_keys(&config.password).await?;
-    let input = driver.find_element(By::Css("button[type=submit]")).await?;
-    input.click().await?;
+/// The energy data returnes by the energy API endpoint
+#[derive(Debug, Deserialize)]
+struct ApiEnergy {
+    /// Total energy produced today (kWh)
+    pv_today: u32,
+    /// Total energy produced this month (kWh)
+    pv_month: u32,
+    /// Total energy produced since installation (kWh)
+    pv_to_date: u32,
+}
+
+///  The power data returned by the power API endpoint
+#[derive(Debug, Deserialize)]
+struct ApiPower {
+    /// Current power production (W)
+    pv_now: u32,
+}
+
+async fn login(config: &Config, client: &reqwest::Client) -> Result<()> {
+    let params = [
+        ("username", &config.username),
+        ("password", &config.password),
+    ];
+    client.post(login_url()?).form(&params).send().await?;
 
     Ok(())
 }
 
-async fn element_value(driver: &WebDriver, by: By<'_>) -> Result<u32> {
-    let element = driver.find_element(by).await?;
-    let text = element.text().await?;
-    let value = text.parse()?;
+async fn update(config: &Config, client: &reqwest::Client, last_updated: u64) -> Result<Status> {
+    // Retrieve the data from the API endpoints
+    let api_energy_url = api_url(&config.site_id, "energy")?;
+    let api_energy: ApiEnergy = client.get(api_energy_url).send().await?.json().await?;
 
-    Ok(value)
+    let api_power_url = api_url(&config.site_id, "power")?;
+    let api_power: ApiPower = client.get(api_power_url).send().await?.json().await?;
+
+    let current_w = api_power.pv_now;
+    let total_kwh = api_energy.pv_to_date;
+
+    // Update the status
+    Ok(Status {
+        current_w,
+        total_kwh,
+        last_updated,
+    })
 }
 
-lazy_static! {
-    static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
-}
-
-async fn update_loop(mut rx: Receiver<()>) -> Result<()> {
-    let mut caps = DesiredCapabilities::firefox();
-    caps.set_headless()?;
-    let driver = WebDriver::new(&format!("http://localhost:{}", GECKO_DRIVER_PORT), &caps).await?;
+async fn update_loop() -> Result<()> {
+    let config = load_config().await?;
+    let client = reqwest::ClientBuilder::new().cookie_store(true).build()?;
 
     // Go to the My Autarco site and login
     println!("⚡ Logging in...");
-    // FIXME: Just dropping the driver hangs the process?
-    if let Err(e) = login(&driver).await {
-        driver.quit().await?;
-        return Err(e);
-    }
+    login(&config, &client).await?;
 
     let mut last_updated = 0;
     loop {
-        // Wait the poll interval to check again!
+        // Wake up every second and check if there is something to do (quit or update).
         sleep(Duration::from_secs(1)).await;
-
-        // Shut down if there is a signal
-        if let Ok(()) = rx.try_recv() {
-            break;
-        }
 
         let timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -132,35 +138,15 @@ async fn update_loop(mut rx: Receiver<()>) -> Result<()> {
             continue;
         }
 
-        // Retrieve the data from the elements
-        let current_w = match element_value(&driver, By::Css("h2#pv-now b")).await {
-            Ok(value) => value,
-            Err(error) => {
-                eprintln!("Failed to retrieve current power: {}", error);
-                continue;
-            }
-        };
-        let total_kwh = match element_value(&driver, By::Css("h2#pv-to-date b")).await {
-            Ok(value) => value,
-            Err(error) => {
-                eprintln!("Failed to retrieve total energy production: {}", error);
-                continue;
-            }
-        };
+        // TODO: Relogin if the cookie expired?
+        // TODO: Handle errors instead of panicing!
+        let status = update(&config, &client, timestamp).await?;
         last_updated = timestamp;
 
-        // Update the status
-        let mut status_guard = STATUS.lock().expect("Status mutex was poisoned");
-        let status = Status {
-            current_w,
-            total_kwh,
-            last_updated,
-        };
         println!("⚡ Updated status to: {:#?}", status);
+        let mut status_guard = STATUS.lock().expect("Status mutex was poisoned");
         status_guard.replace(status);
     }
-
-    Ok(())
 }
 
 #[get("/", format = "application/json")]
@@ -173,23 +159,13 @@ async fn status() -> Option<Json<Status>> {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let mut driver_proc =
-        spawn_driver(GECKO_DRIVER_PORT).expect("Could not find/start the Gecko Driver");
-
-    let (tx, rx) = rocket::tokio::sync::oneshot::channel();
-    let updater = rocket::tokio::spawn(update_loop(rx));
-
     let rocket = rocket::build().mount("/", routes![status]).ignite().await?;
     let shutdown = rocket.shutdown();
 
+    let updater = rocket::tokio::spawn(update_loop());
+
     select! {
-        result = driver_proc.wait() => {
-            shutdown.notify();
-            tx.send(()).map_err(|_| eyre!("Could not send shutdown signal"))?;
-            result?;
-        },
         result = rocket.launch() => {
-            tx.send(()).map_err(|_| eyre!("Could not send shutdown signal"))?;
             result?;
         },
         result = updater => {
