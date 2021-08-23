@@ -124,23 +124,28 @@ async fn update_loop() -> Result<()> {
     // Go to the My Autarco site and login
     println!("⚡ Logging in...");
     login(&config, &client).await?;
+    println!("⚡ Logged in successfully!");
 
     let mut last_updated = 0;
     loop {
-        // Wake up every second and check if there is something to do (quit or update).
-        sleep(Duration::from_secs(1)).await;
+        // Wake up every 10 seconds and check if there is something to do (quit or update).
+        sleep(Duration::from_secs(10)).await;
 
         let timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
         if timestamp - last_updated < POLL_INTERVAL {
             continue;
         }
 
-        // TODO: Relogin if the cookie expired?
-        // TODO: Handle errors instead of panicing!
-        let status = update(&config, &client, timestamp).await?;
+        let status = match update(&config, &client, timestamp).await {
+            Ok(status) => status,
+            Err(e) => {
+                println!("✨ Failed to update status: {}", e);
+                continue;
+            }
+        };
         last_updated = timestamp;
 
         println!("⚡ Updated status to: {:#?}", status);
