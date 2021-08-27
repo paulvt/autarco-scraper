@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use color_eyre::Result;
 use lazy_static::lazy_static;
+use reqwest::StatusCode;
 use rocket::serde::json::Json;
 use rocket::tokio::fs::File;
 use rocket::tokio::io::AsyncReadExt;
@@ -102,12 +103,14 @@ struct ApiPower {
 ///
 /// It mainly stores the acquired cookie in the client's cookie jar. The login credentials come
 /// from the loaded configuration (see [`Config`]).
-async fn login(config: &Config, client: &reqwest::Client) -> Result<()> {
+async fn login(config: &Config, client: &reqwest::Client) -> Result<(), reqwest::Error> {
     let params = [
         ("username", &config.username),
         ("password", &config.password),
     ];
-    client.post(login_url()?).form(&params).send().await?;
+    let login_url = login_url().expect("valid login URL");
+
+    client.post(login_url).form(&params).send().await?;
 
     Ok(())
 }
@@ -116,21 +119,30 @@ async fn login(config: &Config, client: &reqwest::Client) -> Result<()> {
 ///
 /// It needs the cookie from the login to be able to perform the action. It uses both the `energy`
 /// and `power` endpoint to construct the [`Status`] struct.
-async fn update(config: &Config, client: &reqwest::Client, last_updated: u64) -> Result<Status> {
-    // Retrieve the data from the API endpoints
-    let api_energy_url = api_url(&config.site_id, "energy")?;
-    let api_energy: ApiEnergy = client.get(api_energy_url).send().await?.json().await?;
+async fn update(
+    config: &Config,
+    client: &reqwest::Client,
+    last_updated: u64,
+) -> Result<Status, reqwest::Error> {
+    // Retrieve the data from the API endpoints.
+    let api_energy_url = api_url(&config.site_id, "energy").expect("valid API energy URL");
+    let api_response = client.get(api_energy_url).send().await?;
+    let api_energy: ApiEnergy = match api_response.error_for_status() {
+        Ok(res) => res.json().await?,
+        Err(err) => return Err(err.into()),
+    };
 
-    let api_power_url = api_url(&config.site_id, "power")?;
-    let api_power: ApiPower = client.get(api_power_url).send().await?.json().await?;
+    let api_power_url = api_url(&config.site_id, "power").expect("valid API power URL");
+    let api_response = client.get(api_power_url).send().await?;
+    let api_power: ApiPower = match api_response.error_for_status() {
+        Ok(res) => res.json().await?,
+        Err(err) => return Err(err.into()),
+    };
 
-    let current_w = api_power.pv_now;
-    let total_kwh = api_energy.pv_to_date;
-
-    // Update the status
+    // Update the status.
     Ok(Status {
-        current_w,
-        total_kwh,
+        current_w: api_power.pv_now,
+        total_kwh: api_energy.pv_to_date,
         last_updated,
     })
 }
@@ -163,6 +175,12 @@ async fn update_loop() -> Result<()> {
 
         let status = match update(&config, &client, timestamp).await {
             Ok(status) => status,
+            Err(e) if e.status() == Some(StatusCode::UNAUTHORIZED) => {
+                println!("✨ Update unauthorized, trying to log in again...");
+                login(&config, &client).await?;
+                println!("⚡ Logged in successfully!");
+                continue;
+            }
             Err(e) => {
                 println!("✨ Failed to update status: {}", e);
                 continue;
