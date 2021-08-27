@@ -1,4 +1,4 @@
-//! Module that handles the updating/retrieval of the status via the My Autarco site/API.
+//! Module for handling the status updating/retrieval via the My Autarco site/API.
 
 use std::time::{Duration, SystemTime};
 
@@ -22,7 +22,7 @@ fn api_url(site_id: &str, endpoint: &str) -> Result<Url, ParseError> {
     ))
 }
 
-/// The energy data returned by the energy API endpoint
+/// The energy data returned by the energy API endpoint.
 #[derive(Debug, Deserialize)]
 struct ApiEnergy {
     /// Total energy produced today (kWh)
@@ -33,14 +33,14 @@ struct ApiEnergy {
     pv_to_date: u32,
 }
 
-///  The power data returned by the power API endpoint
+///  The power data returned by the power API endpoint.
 #[derive(Debug, Deserialize)]
 struct ApiPower {
     /// Current power production (W)
     pv_now: u32,
 }
 
-/// Performs a login on the My Autarco site
+/// Performs a login on the My Autarco site.
 ///
 /// It mainly stores the acquired cookie in the client's cookie jar. The login credentials come
 /// from the loaded configuration (see [`Config`]).
@@ -66,14 +66,14 @@ async fn update(config: &Config, client: &Client, last_updated: u64) -> Result<S
     let api_response = client.get(api_energy_url).send().await?;
     let api_energy: ApiEnergy = match api_response.error_for_status() {
         Ok(res) => res.json().await?,
-        Err(err) => return Err(err.into()),
+        Err(err) => return Err(err),
     };
 
     let api_power_url = api_url(&config.site_id, "power").expect("valid API power URL");
     let api_response = client.get(api_power_url).send().await?;
     let api_power: ApiPower = match api_response.error_for_status() {
         Ok(res) => res.json().await?,
-        Err(err) => return Err(err.into()),
+        Err(err) => return Err(err),
     };
 
     // Update the status.
@@ -92,14 +92,14 @@ pub(super) async fn update_loop() -> color_eyre::Result<()> {
     let config = load_config().await?;
     let client = ClientBuilder::new().cookie_store(true).build()?;
 
-    // Go to the My Autarco site and login
+    // Go to the My Autarco site and login.
     println!("⚡ Logging in...");
     login(&config, &client).await?;
     println!("⚡ Logged in successfully!");
 
     let mut last_updated = 0;
     loop {
-        // Wake up every 10 seconds and check if there is something to do (quit or update).
+        // Wake up every 10 seconds and check if an update is due.
         sleep(Duration::from_secs(10)).await;
 
         let timestamp = SystemTime::now()

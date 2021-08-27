@@ -14,13 +14,13 @@ use self::update::update_loop;
 
 mod update;
 
-/// The interval between data polls
+/// The base URL of My Autarco site.
+const BASE_URL: &str = "https://my.autarco.com";
+
+/// The interval between data polls.
 ///
 /// This depends on with which interval Autaurco processes new information from the invertor.
 const POLL_INTERVAL: u64 = 300;
-
-/// The base URL of My Autarco site
-const BASE_URL: &'static str = "https://my.autarco.com";
 
 /// The configuration for the My Autarco site
 #[derive(Debug, Deserialize)]
@@ -33,7 +33,7 @@ struct Config {
     site_id: String,
 }
 
-/// Loads the configuration
+/// Loads the configuration.
 ///
 /// The configuration file `autarco.toml` should be located in the project path.
 ///
@@ -64,18 +64,18 @@ struct Status {
 }
 
 lazy_static! {
-    /// The concurrently accessible current status
+    /// The concurrently accessible current status.
     static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
 }
 
-/// Returns the current (last known) status
+/// Returns the current (last known) status.
 #[get("/", format = "application/json")]
 async fn status() -> Option<Json<Status>> {
     let status_guard = STATUS.lock().expect("Status mutex was poisoined");
-    status_guard.map(|status| Json(status))
+    status_guard.map(Json)
 }
 
-/// Starts the main update loop and sets up and launches Rocket
+/// Starts the main update loop and sets up and launches Rocket.
 #[rocket::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
