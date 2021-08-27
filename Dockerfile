@@ -4,7 +4,7 @@
 
 ##########################  BUILD IMAGE  ##########################
 # Rust build image to build Autarco Scraper's statically compiled binary
-FROM docker.io/rust:1.45 as builder
+FROM docker.io/rust:1.54 as builder
 
 # Build the dependencies first
 RUN USER=root cargo new --bin autarco-scraper
@@ -22,18 +22,13 @@ RUN cargo build --release
 
 ########################## RUNTIME IMAGE ##########################
 # Create new stage with a minimal image for the actual runtime image/container
-FROM docker.io/debian:buster-slim
+FROM docker.io/debian:bullseye-slim
 
-# Install cURL, Firefox and the Gecko Driver
+# Install CA certificates
 RUN apt-get update && \
       apt-get upgrade -y && \
-      apt-get install -y --no-install-recommends ca-certificates curl firefox-esr jq && \
+      apt-get install -y --no-install-recommends ca-certificates && \
       rm -rf /var/lib/apt/lists/*
-RUN export VERSION=$(curl -sL https://api.github.com/repos/mozilla/geckodriver/releases/latest | jq -r .tag_name); \
-      curl -vsL https://api.github.com/repos/mozilla/geckodriver/releases/latest | jq -r .tag_name; \
-      curl -sL "https://github.com/mozilla/geckodriver/releases/download/$VERSION/geckodriver-$VERSION-linux64.tar.gz" | \
-      tar -xz -C /usr/local/bin && \
-      chmod +x /usr/local/bin/geckodriver
 
 # Copy the binary from the "builder" stage to the current stage
 RUN adduser --system --disabled-login --home /autarco-scraper --gecos "" --shell /bin/bash autarco-scraper
