@@ -4,7 +4,7 @@
 
 ##########################  BUILD IMAGE  ##########################
 # Rust build image to build Autarco Scraper's statically compiled binary
-FROM rust:1.45 as builder
+FROM docker.io/rust:1.45 as builder
 
 # Build the dependencies first
 RUN USER=root cargo new --bin autarco-scraper
@@ -22,7 +22,7 @@ RUN cargo build --release
 
 ########################## RUNTIME IMAGE ##########################
 # Create new stage with a minimal image for the actual runtime image/container
-FROM debian:buster-slim
+FROM docker.io/debian:buster-slim
 
 # Install cURL, Firefox and the Gecko Driver
 RUN apt-get update && \
