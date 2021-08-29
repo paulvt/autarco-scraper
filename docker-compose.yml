@@ -10,5 +10,6 @@ services:
     volumes:
       - ./autarco.toml:/autarco-scraper/autarco.toml
     environment:
-      ROCKET_LOG: normal  # Available levels are: off, debug, normal, critical
+      ROCKET_ADDRESS: 0.0.0.0
+      ROCKET_LOG_LEVEL: normal  # Available levels are: off, debug, normal, critical
     shm_size: '2gb'
