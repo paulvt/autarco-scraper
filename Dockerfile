@@ -4,7 +4,7 @@
 
 ##########################  BUILD IMAGE  ##########################
 # Rust build image to build Autarco Scraper's statically compiled binary
-FROM docker.io/rust:1.54 as builder
+FROM docker.io/rust:1 as builder
 
 # Build the dependencies first
 RUN USER=root cargo new --bin autarco-scraper
