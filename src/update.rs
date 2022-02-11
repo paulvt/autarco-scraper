@@ -26,9 +26,9 @@ fn api_url(site_id: &str, endpoint: &str) -> Result<Url, ParseError> {
 #[derive(Debug, Deserialize)]
 struct ApiEnergy {
     /// Total energy produced today (kWh)
-    pv_today: u32,
+    // pv_today: u32,
     /// Total energy produced this month (kWh)
-    pv_month: u32,
+    // pv_month: u32,
     /// Total energy produced since installation (kWh)
     pv_to_date: u32,
 }
