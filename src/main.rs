@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use color_eyre::Result;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use rocket::serde::json::Json;
 use rocket::tokio::fs::File;
 use rocket::tokio::io::AsyncReadExt;
@@ -33,6 +33,9 @@ struct Config {
     site_id: String,
 }
 
+/// The global, concurrently accessible current status.
+static STATUS: Lazy<Mutex<Option<Status>>> = Lazy::new(|| Mutex::new(None));
+
 /// Loads the configuration.
 ///
 /// The configuration file `autarco.toml` should be located in the project path.
@@ -61,11 +64,6 @@ struct Status {
     total_kwh: u32,
     /// Timestamp of last update
     last_updated: u64,
-}
-
-lazy_static! {
-    /// The concurrently accessible current status.
-    static ref STATUS: Mutex<Option<Status>> = Mutex::new(None);
 }
 
 /// Returns the current (last known) status.
