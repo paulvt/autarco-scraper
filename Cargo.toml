@@ -3,6 +3,13 @@ name = "autarco-scraper"
 version = "0.1.1"
 authors = ["Paul van Tilburg <paul@luon.net>"]
 edition = "2018"
+description = """"
+Web service that provides a REST API layer over the My Autarco site/API to get
+statistical data of your solar panels.
+"""
+readme = "README.md"
+repository = "https://git.luon.net/paul/autarco-scraper"
+license = "MIT"
 
 [dependencies]
 color-eyre = "0.5.6"
