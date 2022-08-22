@@ -1,4 +1,11 @@
 #![doc = include_str!("../README.md")]
+#![warn(
+    clippy::all,
+    missing_debug_implementations,
+    rust_2018_idioms,
+    rustdoc::broken_intra_doc_links
+)]
+#![deny(missing_docs)]
 
 use std::path::Path;
 use std::sync::Mutex;
