@@ -5,10 +5,10 @@ use std::sync::Mutex;
 
 use color_eyre::Result;
 use once_cell::sync::Lazy;
+use rocket::fairing::AdHoc;
 use rocket::serde::json::Json;
 use rocket::tokio::fs::File;
 use rocket::tokio::io::AsyncReadExt;
-use rocket::tokio::select;
 use rocket::{get, routes};
 use serde::{Deserialize, Serialize};
 
@@ -75,25 +75,15 @@ async fn status() -> Option<Json<Status>> {
     status_guard.map(Json)
 }
 
-/// Starts the main update loop and sets up and launches Rocket.
-#[rocket::main]
-async fn main() -> Result<()> {
-    color_eyre::install()?;
-
-    let rocket = rocket::build().mount("/", routes![status]).ignite().await?;
-    let shutdown = rocket.shutdown();
-
-    let updater = rocket::tokio::spawn(update_loop());
-
-    select! {
-        result = rocket.launch() => {
-            result?;
-        },
-        result = updater => {
-            shutdown.notify();
-            result??;
-        }
-    }
-
-    Ok(())
+/// Creates a Rocket and attaches the update loop as fairing.
+#[rocket::launch]
+fn rocket() -> _ {
+    rocket::build()
+        .mount("/", routes![status])
+        .attach(AdHoc::on_liftoff("Updater", |_| {
+            Box::pin(async move {
+                // We don't care about the join handle nor error results?
+                let _ = rocket::tokio::spawn(update_loop());
+            })
+        }))
 }
