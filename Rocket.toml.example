@@ -1,3 +1,8 @@
 [default]
 address = "0.0.0.0"
 port = 2356
+
+# Put your My Autarco credentials below and uncomment them
+# username = "foo@domain.tld"
+# password = "secret"
+# site_id = "abc123de"

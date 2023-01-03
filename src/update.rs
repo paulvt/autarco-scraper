@@ -7,7 +7,7 @@ use rocket::tokio::time::sleep;
 use serde::Deserialize;
 use url::{ParseError, Url};
 
-use super::{load_config, Config, Status, BASE_URL, POLL_INTERVAL, STATUS};
+use super::{Config, Status, BASE_URL, POLL_INTERVAL, STATUS};
 
 /// Returns the login URL for the My Autarco site.
 fn login_url() -> Result<Url, ParseError> {
@@ -88,8 +88,7 @@ async fn update(config: &Config, client: &Client, last_updated: u64) -> Result<S
 ///
 /// It updates the mutex-guarded current update [`Status`] struct which can be retrieved via
 /// Rocket.
-pub(super) async fn update_loop() -> color_eyre::Result<()> {
-    let config = load_config().await?;
+pub(super) async fn update_loop(config: Config) -> color_eyre::Result<()> {
     let client = ClientBuilder::new().cookie_store(true).build()?;
 
     // Go to the My Autarco site and login.
