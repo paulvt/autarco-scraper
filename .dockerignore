@@ -12,7 +12,4 @@ docker-compose*
 .gitignore
 
 # TOML files
-autarco.toml*
-
-# Documentation
-*.md
+Rocket.toml

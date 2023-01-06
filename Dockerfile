@@ -8,7 +8,7 @@ FROM docker.io/rust:1 as builder
 
 # Build the dependencies first
 RUN USER=root cargo new --bin autarco-scraper
-WORKDIR ./autarco-scraper
+WORKDIR /usr/src/autarco-scraper
 COPY ./Cargo.* ./
 RUN cargo build --release
 RUN rm src/*.rs

@@ -6,10 +6,14 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - 8066:8000
+      - 2356:8000
+    # Use a `Rocket.toml` or configure the credentials using environment variables below
     volumes:
-      - ./autarco.toml:/autarco-scraper/autarco.toml
+      - ./Rocket.toml:/autarco-scraper/Rocket.toml
     environment:
-      ROCKET_ADDRESS: 0.0.0.0
       ROCKET_LOG_LEVEL: normal  # Available levels are: off, debug, normal, critical
+      # Put your My Autarco credentials below and uncomment them
+      # ROCKET_USERNAME: foo@domain.tld
+      # ROCKET_PASSWORD: secret
+      # ROCKET_SITE_ID: abc123de
     shm_size: '2gb'
