@@ -3,6 +3,11 @@
 Autarco Scraper is a web service that provides a REST API layer over the My
 Autarco site/API to get statistical data of your solar panels.
 
+**Archived!**
+This project has been archived in favor of
+[Solar Grabber](https://git.luon.net/paul/solar-grabber) that provides
+the same functionality but also supports more solar cloud services/sites.
+
 ## Building & running
 
 First, you need to provide your My Autarco credentials in the file
